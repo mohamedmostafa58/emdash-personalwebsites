@@ -1,0 +1,212 @@
+---
+// Cloudflare Manager Dashboard
+// Only accessible when logged in
+if (!Astro.locals.user) {
+	return Astro.redirect("/_emdash/admin");
+}
+
+const BASE = "/_emdash/api/plugins/cf-manager";
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloudflare Manager</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,system-ui,sans-serif;background:#f5f5f5;color:#1a1a1a;padding:20px}
+.wrap{max-width:800px;margin:0 auto}
+h1{font-size:22px;margin-bottom:4px}
+.sub{color:#666;font-size:14px;margin-bottom:24px}
+a.back{font-size:13px;color:#0066cc;text-decoration:none;display:inline-block;margin-bottom:16px}
+.card{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:20px;margin-bottom:16px}
+.card h2{font-size:15px;font-weight:600;margin-bottom:14px;color:#333}
+label{display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#555}
+input[type=text],input[type=password]{width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;display:inline-block}
+.btn-p{background:#0066cc;color:#fff}
+.btn-d{background:#fff;color:#c00;border:1px solid #c00}
+.btn-w{background:#fff3e0;color:#e65100;border:1px solid #ffcc80}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500}
+.bg{background:#e8f5e9;color:#2e7d32}
+.br{background:#ffebee;color:#c62828}
+.by{background:#f5f5f5;color:#666}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;padding:8px 12px;border-bottom:2px solid #eee;font-size:12px;color:#888;text-transform:uppercase}
+td{padding:10px 12px;border-bottom:1px solid #f0f0f0}
+.msg{padding:10px 16px;border-radius:6px;margin-bottom:16px;font-size:14px}
+.msg-ok{background:#e8f5e9;color:#2e7d32}
+.msg-err{background:#ffebee;color:#c62828}
+.hint{color:#888;font-size:13px;margin-bottom:8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:#f9f9f9;border-radius:6px;padding:12px}
+.stat-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.05em}
+.stat-value{font-size:18px;font-weight:700;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<a class="back" href="/_emdash/admin">&larr; Back to Admin</a>
+<h1>Cloudflare Manager</h1>
+<p class="sub">Domains &middot; Cache Rules &middot; Purge</p>
+<div id="msg"></div>
+
+<div class="card" id="stats-card" style="display:none">
+<div class="stats" id="stats"></div>
+</div>
+
+<div class="card">
+<h2>Settings</h2>
+<label>API Token</label>
+<input type="password" id="apiToken" placeholder="Enter Cloudflare API token">
+<label>Account ID</label>
+<input type="text" id="accountId" placeholder="e3cf4aad518c...">
+<label>Worker Name</label>
+<input type="text" id="workerName" placeholder="my-emdash-site">
+<button class="btn btn-p" onclick="saveSettings()">Save Settings</button>
+</div>
+
+<div class="card">
+<h2>Assign Domain</h2>
+<p class="hint">Enter hostname (e.g. blog.yourdomain.com). Parent domain must be a zone in your account.</p>
+<div class="row">
+<input type="text" id="hostname" placeholder="blog.yourdomain.com" style="flex:1;margin:0">
+<button class="btn btn-p" onclick="assignDomain()">Assign</button>
+</div>
+</div>
+
+<div class="card">
+<h2>Attached Domains</h2>
+<div id="domains">Loading...</div>
+</div>
+
+<div class="card">
+<h2>Cache Actions</h2>
+<div class="row">
+<button class="btn btn-p" onclick="activate()">Activate Caching</button>
+<button class="btn btn-w" onclick="purge()">Purge Cache</button>
+<button class="btn btn-d" onclick="deactivate()">Deactivate</button>
+</div>
+<p class="hint" style="margin-top:8px">Activate creates cache rules for all attached domains. Purge clears cache for this worker's zones only.</p>
+</div>
+
+<div class="card">
+<h2>Debug Info</h2>
+<pre id="debug" style="font-size:12px;color:#666;overflow:auto;max-height:300px">Loading...</pre>
+</div>
+</div>
+
+<script define:vars={{ BASE }}>
+const H = {"Content-Type":"application/json","X-EmDash-Request":"1"};
+
+function msg(text, ok) {
+  document.getElementById("msg").innerHTML = '<div class="msg '+(ok?'msg-ok':'msg-err')+'">'+text+'</div>';
+  setTimeout(function(){document.getElementById("msg").innerHTML=""},5000);
+}
+
+async function api(route, body) {
+  var opts = body ? {method:"POST",headers:H,body:JSON.stringify(body)} : {headers:H};
+  var res = await fetch(BASE+"/"+route, opts);
+  return await res.json();
+}
+
+async function saveSettings() {
+  var body = {};
+  var t = document.getElementById("apiToken").value;
+  var a = document.getElementById("accountId").value;
+  var w = document.getElementById("workerName").value;
+  if (t) body.apiToken = t;
+  if (a) body.accountId = a;
+  if (w) body.workerName = w;
+  var res = await api("settings/save", body);
+  if (res.success) { msg("Settings saved!", true); document.getElementById("apiToken").value=""; loadAll(); }
+  else msg(res.reason||"Failed", false);
+}
+
+async function assignDomain() {
+  var hostname = document.getElementById("hostname").value;
+  if (!hostname) return msg("Enter a hostname", false);
+  var res = await api("assign", {hostname:hostname});
+  if (res.success) { msg(hostname+" assigned!", true); document.getElementById("hostname").value=""; loadAll(); }
+  else msg((res.errors&&res.errors[0]&&res.errors[0].message)||res.reason||"Failed", false);
+}
+
+async function removeDomain(domainId, name) {
+  if (!confirm("Remove "+name+"?")) return;
+  var res = await api("domain/remove", {domainId:domainId});
+  if (res.success) { msg(name+" removed", true); loadAll(); }
+  else msg("Failed to remove", false);
+}
+
+async function activate() {
+  msg("Activating...", true);
+  var res = await api("activate", {});
+  if (res.success) {
+    var details = (res.results||[]).map(function(r){return r.hostname+": "+(r.cached?"cached":"failed")}).join(", ");
+    msg("Activated! "+details, true); loadAll();
+  } else msg(res.reason||"Failed", false);
+}
+
+async function deactivate() {
+  if (!confirm("Remove all cache rules?")) return;
+  var res = await api("deactivate", {});
+  if (res.success) { msg("Deactivated", true); loadAll(); }
+  else msg("Failed", false);
+}
+
+async function purge() {
+  if (!confirm("Purge cache?")) return;
+  var res = await api("purge", {});
+  if (res.success) { msg("Cache purged!", true); loadAll(); }
+  else msg(res.reason||"Failed", false);
+}
+
+async function loadAll() {
+  try {
+    var d = await api("debug");
+
+    // Fill fields
+    if (d.config.accountId && !document.getElementById("accountId").value)
+      document.getElementById("accountId").value = d.config.accountId;
+    if (d.config.workerName && !document.getElementById("workerName").value)
+      document.getElementById("workerName").value = d.config.workerName;
+
+    // Stats
+    var sc = document.getElementById("stats-card");
+    var s = document.getElementById("stats");
+    if (d.config.hasToken) {
+      sc.style.display = "block";
+      s.innerHTML =
+        '<div class="stat"><div class="stat-label">Domains</div><div class="stat-value">'+d.domains.length+'</div></div>'+
+        '<div class="stat"><div class="stat-label">Cache</div><div class="stat-value">'+(d.cache.active?'Active':'Off')+'</div></div>'+
+        '<div class="stat"><div class="stat-label">Last Purge</div><div class="stat-value">'+(d.cache.lastPurge?new Date(d.cache.lastPurge).toLocaleTimeString():'Never')+'</div></div>';
+    }
+
+    // Domains
+    var dl = document.getElementById("domains");
+    if (!d.domains || d.domains.length === 0) {
+      dl.innerHTML = '<p class="hint">No domains attached.</p>';
+    } else {
+      var html = '<table><thead><tr><th>Domain</th><th>Zone</th><th></th></tr></thead><tbody>';
+      for (var i = 0; i < d.domains.length; i++) {
+        var dom = d.domains[i];
+        html += '<tr><td><strong>'+dom.hostname+'</strong></td><td>'+dom.zone_name+'</td>';
+        html += '<td style="text-align:right"><button class="btn btn-d" onclick="removeDomain(\''+dom.id+'\',\''+dom.hostname+'\')">Remove</button></td></tr>';
+      }
+      html += '</tbody></table>';
+      dl.innerHTML = html;
+    }
+
+    // Debug
+    document.getElementById("debug").textContent = JSON.stringify(d, null, 2);
+  } catch(e) {
+    document.getElementById("debug").textContent = "Error: "+e.message;
+  }
+}
+
+loadAll();
+</script>
+</body>
+</html>
