@@ -18,6 +18,7 @@
     "@emdash-cms/plugin-webhook-notifier": "^0.0.3",
     "astro": "^6.1.2",
     "emdash": "^0.0.3",
+    "emdash-plugin-deploy-hook": "github:mohamedmostafa58/emdash-plugin-deploy-hook",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

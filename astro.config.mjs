@@ -5,16 +5,15 @@ import { formsPlugin } from "@emdash-cms/plugin-forms";
 import { webhookNotifierPlugin } from "@emdash-cms/plugin-webhook-notifier";
 import { defineConfig } from "astro/config";
 import emdash from "emdash/astro";
-import { cfManagerPlugin } from "./src/plugins/cache-purge";
+import { deployHook, deployHookPlugin } from "emdash-plugin-deploy-hook";
 
 export default defineConfig({
 	output: "server",
 	adapter: cloudflare(),
 	vite: {
 		resolve: {
-			alias: {
-				"@local/cf-manager": new URL("./src/plugins/cache-purge.ts", import.meta.url).pathname,
-			},
+			dedupe: ["emdash"],
+			preserveSymlinks: true,
 		},
 	},
 	image: {
@@ -26,12 +25,13 @@ export default defineConfig({
 		emdash({
 			database: d1({ binding: "DB", session: "auto" }),
 			storage: r2({ binding: "MEDIA" }),
-			plugins: [formsPlugin(), cfManagerPlugin()],
+			plugins: [formsPlugin(), deployHookPlugin()],
 			sandboxed: [webhookNotifierPlugin()],
 			sandboxRunner: sandbox(),
 			marketplace: "https://marketplace.emdashcms.com",
 			mcp: true,
 		}),
+		deployHook({ dynamic: ["/search", "/cf-manager"] }),
 	],
 	devToolbar: { enabled: false },
 });
