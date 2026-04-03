@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "bash build.sh",
+    "build:ssr": "astro build",
     "preview": "astro preview",
     "deploy": "wrangler deploy",
     "typecheck": "astro check"
